@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- PWA мета-теги -->
+    <meta name="application-name" content="Запись к массажисту">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Массаж">
+    <meta name="description" content="Удобная запись на массаж в два клика">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="msapplication-TileColor" content="#d4a574">
+    <meta name="msapplication-tap-highlight" content="no">
+    <meta name="theme-color" content="#d4a574">
+    
+    <!-- Ярлыки для iOS -->
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
+    <link rel="apple-touch-icon" sizes="167x167" href="icons/icon-167.png">
+    
+    <!-- Манифест -->
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16.png">
+    <title>Запись к массажисту</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- PWA мета-теги (добавь если нет) -->
+        <meta name="theme-color" content="#d4a574">
+        <link rel="manifest" href="manifest.json">
+        
+        <!-- Supabase CDN -->
+        <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+        
+        <!-- Наши скрипты в правильном порядке -->
+        <script type="module" src="supabase.js"></script>
+        <script src="app.js" defer></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Шапка -->
+        <header class="header">
+            <div class="logo">
+                <i class="fas fa-spa"></i>
+                <h1>Массаж & Релакс</h1>
+            </div>
+            <div class="current-date" id="current-date"></div>
+        </header>
+
+        <!-- Основной контент -->
+        <main>
+            <!-- Недельный вид -->
+            <div id="week-view">
+                <div class="week-nav">
+                    <button id="prev-week" class="nav-btn">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <h2 id="week-title">Эта неделя</h2>
+                    <button id="next-week" class="nav-btn">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+                
+                <div class="week-grid" id="week-grid">
+                    <!-- Дни недели будут здесь -->
+                </div>
+            </div>
+
+            <!-- Дневной вид (скрыт по умолчанию) -->
+            <div id="day-view" class="hidden">
+                <div class="day-header">
+                    <button id="back-button" class="back-btn">
+                        <i class="fas fa-arrow-left"></i> Назад
+                    </button>
+                    <h2 id="selected-date">Понедельник, 25 декабря</h2>
+                </div>
+                
+                <div class="time-slots-container">
+                    <div class="day-info">
+                        <i class="fas fa-clock"></i>
+                        <span>Рабочие часы: 10:00 - 20:00</span>
+                    </div>
+                    <div id="time-slots">
+                        <!-- Слоты времени будут здесь -->
+                    </div>
+                </div>
+            </div>
+        </main>
+
+  
+    <!-- Модальное окно записи -->
+    <div id="booking-modal" class="modal hidden">
+        <div class="modal-content">
+            <button id="close-modal" class="close-btn">
+                <i class="fas fa-times"></i>
+            </button>
+            
+            <div class="modal-header">
+                <i class="fas fa-calendar-plus"></i>
+                <h3 id="modal-title">Новая запись</h3>
+            </div>
+            
+            <form id="booking-form">
+                <div class="form-group">
+                    <label for="client-name">
+                        <i class="fas fa-user"></i> Ваше имя
+                    </label>
+                    <input type="text" id="client-name" placeholder="Иван Иванов" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="client-phone">
+                        <i class="fas fa-phone"></i> Телефон
+                    </label>
+                    <input type="tel" id="client-phone" placeholder="+7 (999) 123-45-67" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="service">
+                        <i class="fas fa-hand-holding-heart"></i> Тип массажа
+                    </label>
+                    <select id="service">
+                        <option>Общий массаж</option>
+                        <option>Массаж спины</option>
+                        <option>Расслабляющий</option>
+                        <option>Спортивный</option>
+                        <option>Антицеллюлитный</option>
+                    </select>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" id="cancel-btn" class="btn-secondary">
+                        Отмена
+                    </button>
+                    <button type="submit" class="btn-primary">
+                        <i class="fas fa-check"></i> Записаться
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+	<!-- В самом низу body, перед скриптами -->
+	<div id="admin-access" style="position: fixed; bottom: 10px; right: 10px; z-index: 9999;">
+	    <button id="admin-btn" style="opacity: 0.3; transition: opacity 0.3s;">
+	        <i class="fas fa-user-shield"></i>
+	    </button>
+	</div>
+
+
+</body>
+</html>

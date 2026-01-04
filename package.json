@@ -1,0 +1,13 @@
+{
+  "name": "massage-booking-pwa",
+  "version": "1.0.0",
+  "description": "PWA приложение для записи к массажисту",
+  "main": "index.html",
+  "scripts": {
+    "dev": "npx serve .",
+    "build": "echo 'Build not required for static PWA'"
+  },
+  "keywords": ["pwa", "massage", "booking"],
+  "author": "Your Name",
+  "license": "MIT"
+}
