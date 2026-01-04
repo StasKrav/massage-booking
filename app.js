@@ -10,14 +10,92 @@ let subscription = null;
 
 // Проверка на админа (по паролю или по особому телефону)
 
-const ADMIN_PHONES = ['+79954801080']; // телефоны массажистов
+const ADMIN_PHONES = ['+79954801080'];
+const ADMIN_PASSWORD = '910803111970'; // Ты можешь поменять на свой пароль
 let isAdminMode = false;
+let adminLoginAttempts = 0;;
 
 
 function checkAdminAccess() {
     // Если телефон пользователя в списке админов
     if (user && ADMIN_PHONES.includes(user.phone)) {
-        enableAdminMode();
+        // Показываем кнопку админа, но требуем пароль для активации
+        showAdminButton();
+    }
+}
+
+function showAdminButton() {
+    const adminBtn = document.getElementById('admin-btn');
+    adminBtn.style.opacity = '1';
+    adminBtn.style.background = '#d4a574';
+    adminBtn.style.color = 'white';
+    adminBtn.style.borderRadius = '50%';
+    adminBtn.style.width = '40px';
+    adminBtn.style.height = '40px';
+    adminBtn.style.border = 'none';
+    adminBtn.style.cursor = 'pointer';
+    adminBtn.title = 'Вход для мастера';
+    
+    // Клик по кнопке - запрос пароля
+    adminBtn.addEventListener('click', requestAdminPassword);
+}
+
+function requestAdminPassword() {
+    if (isAdminMode) {
+        showAdminPanel();
+        return;
+    }
+    
+    // Запрашиваем пароль
+    const password = prompt('🔐 Введите пароль мастера:', '');
+    
+    if (password === ADMIN_PASSWORD) {
+        adminLoginAttempts = 0;
+        isAdminMode = true;
+        showAdminPanel();
+        
+        // Сохраняем в localStorage на 24 часа
+        localStorage.setItem('massage_admin_auth', JSON.stringify({
+            phone: user.phone,
+            expires: Date.now() + (24 * 60 * 60 * 1000)
+        }));
+        
+        // Обновляем кнопку
+        const adminBtn = document.getElementById('admin-btn');
+        adminBtn.style.background = '#10b981';
+        adminBtn.title = 'Режим мастера активен';
+        
+    } else {
+        adminLoginAttempts++;
+        alert(`Неверный пароль! Попытка ${adminLoginAttempts}/3`);
+        
+        if (adminLoginAttempts >= 3) {
+            const adminBtn = document.getElementById('admin-btn');
+            adminBtn.style.display = 'none';
+            alert('Доступ заблокирован на 5 минут');
+            setTimeout(() => {
+                adminBtn.style.display = 'block';
+                adminLoginAttempts = 0;
+            }, 5 * 60 * 1000);
+        }
+    }
+}
+
+// Проверка при загрузке приложения
+function checkSavedAdminAuth() {
+    try {
+        const saved = localStorage.getItem('massage_admin_auth');
+        if (saved) {
+            const auth = JSON.parse(saved);
+            if (auth.phone === user.phone && auth.expires > Date.now()) {
+                isAdminMode = true;
+                console.log('✅ Админ-сессия восстановлена');
+            } else {
+                localStorage.removeItem('massage_admin_auth');
+            }
+        }
+    } catch (e) {
+        console.warn('Ошибка проверки админ-сессии:', e);
     }
 }
 
@@ -548,6 +626,7 @@ async function initApp() {
     renderWeek();
     
     // Проверяем админа
+    checkSavedAdminAuth();
     checkAdminAccess();
     
     // Настройка обработчиков
