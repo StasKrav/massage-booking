@@ -431,32 +431,31 @@ function renderTimeSlots() {
     const todayStr = formatDate(now, 'input');
     const isToday = selectedDate === todayStr;
     
+    // Вспомогательная функция для нормализации времени
+    const normalizeTime = (timeStr) => {
+        if (!timeStr) return null;
+        const hour = timeStr.split(':')[0];
+        return `${hour.padStart(2, '0')}:00`;
+    };
+    
     // Находим все записи на выбранную дату
     const dateBookings = Object.entries(bookings)
         .filter(([key, booking]) => {
-            // Поддерживаем разные форматы ключей
             const keyDate = key.split('_')[0];
             return keyDate === selectedDate || booking.date === selectedDate;
         })
         .map(([key, booking]) => ({
-            time: booking.time || key.split('_')[1],
+            time: normalizeTime(booking.time || key.split('_')[1]),
             ...booking
         }));
-    
-    console.log(`Записи на ${selectedDate}:`, dateBookings); // Для отладки
     
     // Генерация слотов с 10:00 до 20:00
     for (let hour = 10; hour < 20; hour++) {
         const time = `${hour.toString().padStart(2, '0')}:00`;
         
-        // Ищем запись на это время
-        const booking = dateBookings.find(b => {
-            // Нормализуем время (10:00, 10:00:00 и т.д.)
-            const bookingTime = b.time ? b.time.split(':')[0] + ':00' : null;
-            return bookingTime === time;
-        });
+        // Ищем запись на это время (сравниваем нормализованные значения)
+        const booking = dateBookings.find(b => b.time === time);
         
-        // Проверяем, не прошло ли время (если сегодня)
         const isPast = isToday && hour <= now.getHours();
         
         const slot = document.createElement('div');
@@ -470,9 +469,6 @@ function renderTimeSlots() {
                     <div class="service">${booking.service}</div>
                 </div>
             `;
-            
-            // Даже для забронированных слотов показываем информацию
-            // (ранее был пустой div для забронированных)
         } else {
             slot.innerHTML = `
                 <div class="time">${time}</div>
@@ -1107,3 +1103,79 @@ function getMonthName(date) {
     return months[date.getMonth()];
 }
 
+// В КОНЕЦ app.js (перед последней закрывающей скобкой) добавляем:
+
+// Функция для проигрывания звука
+function playNotificationSound() {
+  try {
+    // Создаем простой звук "динь" с помощью Web Audio API
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.value = 800; // Высокий приятный звук
+    oscillator.type = 'sine';
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.5);
+    
+  } catch (e) {
+    // Fallback - простой бип
+    console.log("🔔 Новая запись!");
+  }
+}
+
+// Альтернативный вариант - используем встроенный звук
+function playSimpleSound() {
+  try {
+    // Создаем короткий звуковой сигнал
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    osc.frequency.value = 800;
+    
+    const gainNode = ctx.createGain();
+    gainNode.gain.setValueAtTime(0.5, ctx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+    
+    osc.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    
+    osc.start();
+    osc.stop(ctx.currentTime + 0.3);
+  } catch (e) {
+    // Если не поддерживается AudioContext
+    console.log("🔔");
+  }
+}
+
+// Запрашиваем разрешение на уведомления
+async function requestNotificationPermission() {
+  if ("Notification" in window) {
+    if (Notification.permission === "default") {
+      // Просим разрешение только если пользователь админ
+      if (adminMode) {
+        const permission = await Notification.requestPermission();
+        console.log("Разрешение на уведомления:", permission);
+      }
+    }
+  }
+}
+
+// Показываем уведомление
+function showNewBookingNotification(bookingData) {
+  if (!("Notification" in window)) return;
+  
+  if (Notification.permission === "granted") {
+    new Notification("📅 Новая запись на массаж!", {
+      body: `${bookingData.name} - ${bookingData.time}, ${bookingData.service}`,
+      icon: "/icon.png", // Добавь иконку в проект
+      tag: "new-booking" // Группируем уведомления
+    });
+  }
+}
