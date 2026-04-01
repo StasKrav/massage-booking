@@ -11,10 +11,20 @@ let subscription = null;
 // Проверка на админа (по паролю или по особому телефону)
 
 const ADMIN_PHONES = ['+79954801080'];
-const ADMIN_PASSWORD = '910803111970'; // Ты можешь поменять на свой пароль
+const ADMIN_PASSWORD_HASH = '7d117401bd9810300f9368b9efc3377c4897927dc9baeb020a8c291a2d0ca6b1'; // Ты можешь поменять на свой пароль
 let isAdminMode = false;
 let adminLoginAttempts = 0;;
 
+
+// Функция проверки пароля
+async function verifyAdminPassword(password) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex === ADMIN_PASSWORD_HASH;
+}
 
 function checkAdminAccess() {
     // Если телефон пользователя в списке админов
@@ -40,31 +50,28 @@ function showAdminButton() {
     adminBtn.addEventListener('click', requestAdminPassword);
 }
 
-function requestAdminPassword() {
+async function requestAdminPassword() {
     if (isAdminMode) {
         showAdminPanel();
         return;
     }
     
-    // Запрашиваем пароль
     const password = prompt('🔐 Введите пароль мастера:', '');
     
-    if (password === ADMIN_PASSWORD) {
+    const isValid = await verifyAdminPassword(password);
+    if (isValid) {
         adminLoginAttempts = 0;
         isAdminMode = true;
         showAdminPanel();
         
-        // Сохраняем в localStorage на 24 часа
         localStorage.setItem('massage_admin_auth', JSON.stringify({
             phone: user.phone,
             expires: Date.now() + (24 * 60 * 60 * 1000)
         }));
         
-        // Обновляем кнопку
         const adminBtn = document.getElementById('admin-btn');
         adminBtn.style.background = '#10b981';
         adminBtn.title = 'Режим мастера активен';
-        
     } else {
         adminLoginAttempts++;
         alert(`Неверный пароль! Попытка ${adminLoginAttempts}/3`);
@@ -552,15 +559,18 @@ function openBookingModal(time) {
 async function saveQuickBooking() {
     const service = document.getElementById('quick-service').value;
     const serviceRegex = /^[А-ЯЁа-яё\s\-\d]+$/;
-        if (!serviceRegex.test(service)) {
-            alert('Название услуги содержит недопустимые символы');
-            return;
-        }
+    if (!serviceRegex.test(service)) {
+        alert('Название услуги содержит недопустимые символы');
+        return;
+    }
     
     try {
+        // СОХРАНЯЕМ ВРЕМЯ В ОТДЕЛЬНУЮ ПЕРЕМЕННУЮ
+        const bookingTime = selectedTime; // ← сохраняем до закрытия
+        
         const bookingData = {
             date: selectedDate,
-            time: selectedTime,
+            time: bookingTime,
             name: user.name,
             phone: user.phone,
             service: service
@@ -569,8 +579,8 @@ async function saveQuickBooking() {
         // Сохраняем в Supabase
         const newBooking = await bookingAPI.createBooking(bookingData);
         
-        // Обновляем локальную копию (только в памяти)
-        const key = `${selectedDate}_${selectedTime}`;
+        // Обновляем локальную копию
+        const key = `${selectedDate}_${bookingTime}`;
         bookings[key] = newBooking;
         
         // Обновляем интерфейс
@@ -587,45 +597,36 @@ async function saveQuickBooking() {
 }
 
 async function initApp() {
-    // Проверяем, есть ли пользователь
     if (!user) {
         console.warn('Пользователь не определен, пропускаем инициализацию');
         return;
     }
     
-    // Показываем текущую дату
     updateCurrentDate();
     
     try {
-        // Загружаем данные ТОЛЬКО из Supabase
+        // Загружаем данные из Google Sheets
         bookings = await bookingAPI.getAllBookings();
-        console.log('Загружено записей из Supabase:', Object.keys(bookings).length);
+        console.log('Загружено записей:', Object.keys(bookings).length);
         
         // Подписываемся на изменения
         if (bookingAPI.subscribeToChanges) {
             subscription = bookingAPI.subscribeToChanges(async () => {
-                console.log('Обновляем данные из Supabase...');
+                console.log('Обновляем данные...');
                 bookings = await bookingAPI.getAllBookings();
                 renderWeek();
                 if (selectedDate) renderTimeSlots();
             });
         }
     } catch (error) {
-        console.error('Ошибка загрузки из Supabase:', error);
-        // НЕ используем localStorage как fallback!
-        // Просто показываем пустое расписание
+        console.error('Ошибка загрузки:', error);
         bookings = {};
         alert('Не удалось загрузить расписание. Проверьте интернет.');
     }
     
-    // Рендерим неделю
     renderWeek();
-    
-    // Проверяем админа
     checkSavedAdminAuth();
     checkAdminAccess();
-    
-    // Настройка обработчиков
     setupEventListeners();
 }
 
@@ -871,31 +872,32 @@ function showAdminPanel() {
                         <button id="export-btn" class="btn-secondary">
                             <i class="fas fa-file-export"></i> Экспорт в Excel
                         </button>
-                        <button id="clear-old-btn" class="btn-secondary">
-                            <i class="fas fa-trash"></i> Очистить старые
-                        </button>
                     </div>
                     
-                    <div class="bookings-list" id="all-bookings-list">
-                        <!-- Список всех записей -->
-                    </div>
+                    <div class="bookings-list" id="all-bookings-list"></div>
                 </div>
                 
                 <div id="tab-clients" class="admin-tab-content">
-                    <div class="clients-list" id="clients-list">
-                        <!-- Список клиентов -->
-                    </div>
+                    <div class="clients-list" id="clients-list"></div>
                 </div>
                 
                 <div id="tab-settings" class="admin-tab-content">
-                    <div class="form-group">
-                        <label>Рабочие часы</label>
-                        <div style="display: flex; gap: 10px;">
-                            <input type="time" id="work-start" value="10:00">
-                            <span>до</span>
-                            <input type="time" id="work-end" value="20:00">
+                    <div class="backup-section">
+                        <h4><i class="fas fa-database"></i> Резервное копирование</h4>
+                        <div style="display: flex; gap: 10px; margin-top: 10px;">
+                            <button id="backup-export" class="btn-secondary">
+                                <i class="fas fa-download"></i> Экспорт
+                            </button>
+                            <button id="backup-import" class="btn-secondary">
+                                <i class="fas fa-upload"></i> Импорт
+                            </button>
                         </div>
+                        <small style="color: #8b7355; margin-top: 10px; display: block;">
+                            📁 Все записи хранятся в вашем браузере. Регулярно делайте бэкап!
+                        </small>
                     </div>
+                    
+                    <input type="file" id="backup-file" accept=".json" style="display: none;">
                     
                     <div class="form-group">
                         <label>Услуги</label>
@@ -939,9 +941,39 @@ function showAdminPanel() {
         panel.remove();
     });
     
-    // Экспорт
+    // Экспорт в Excel
     document.getElementById('export-btn').addEventListener('click', exportToExcel);
-    // document.getElementById('clear-old-btn').addEventListener('click', cleanupOldBookings);
+    
+    // Бэкап
+    const backupExport = document.getElementById('backup-export');
+    if (backupExport) {
+        backupExport.addEventListener('click', () => {
+            bookingAPI.exportBookings();
+            alert('✅ Бэкап сохранен');
+        });
+    }
+    
+    const backupImport = document.getElementById('backup-import');
+    if (backupImport) {
+        backupImport.addEventListener('click', () => {
+            document.getElementById('backup-file').click();
+        });
+    }
+    
+    const backupFile = document.getElementById('backup-file');
+    if (backupFile) {
+        backupFile.addEventListener('change', async (e) => {
+            if (e.target.files.length > 0) {
+                try {
+                    await bookingAPI.importBookings(e.target.files[0]);
+                    alert('✅ Бэкап восстановлен! Обновите страницу.');
+                    location.reload();
+                } catch (error) {
+                    alert('❌ Ошибка: ' + error);
+                }
+            }
+        });
+    }
     
     // Клик вне панели для закрытия
     panel.addEventListener('click', (e) => {
@@ -1155,16 +1187,17 @@ function playSimpleSound() {
 }
 
 // Запрашиваем разрешение на уведомления
+// Запрашиваем разрешение на уведомления
 async function requestNotificationPermission() {
-  if ("Notification" in window) {
-    if (Notification.permission === "default") {
-      // Просим разрешение только если пользователь админ
-      if (adminMode) {
-        const permission = await Notification.requestPermission();
-        console.log("Разрешение на уведомления:", permission);
-      }
+    if ("Notification" in window) {
+        if (Notification.permission === "default") {
+            // Исправлено: isAdminMode вместо adminMode
+            if (window.isAdminMode) {
+                const permission = await Notification.requestPermission();
+                console.log("Разрешение на уведомления:", permission);
+            }
+        }
     }
-  }
 }
 
 // Показываем уведомление
