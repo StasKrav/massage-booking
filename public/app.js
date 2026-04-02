@@ -597,17 +597,22 @@ async function saveQuickBooking() {
 }
 
 async function initApp() {
-    if (!user) {
-        console.warn('Пользователь не определен, пропускаем инициализацию');
-        return;
-    }
-    
+    // Убираем ранний return, сначала проверяем пользователя
     updateCurrentDate();
     
+    // Если нет пользователя - показываем регистрацию и ждём
+    if (!user) {
+        console.log('Нет пользователя, показываем регистрацию');
+        // Регистрация уже показывается через showRegistrationModal() при загрузке
+        return; // Выходим, регистрация обработает остальное
+    }
+    
     try {
-        // Загружаем данные из Google Sheets
+        // Загружаем данные из API
         bookings = await bookingAPI.getAllBookings();
         console.log('Загружено записей:', Object.keys(bookings).length);
+        
+        renderWeek();
         
         // Подписываемся на изменения
         if (bookingAPI.subscribeToChanges) {
@@ -618,17 +623,26 @@ async function initApp() {
                 if (selectedDate) renderTimeSlots();
             });
         }
+        
+        checkSavedAdminAuth();
+        checkAdminAccess();
+        setupEventListeners();
+        
     } catch (error) {
         console.error('Ошибка загрузки:', error);
         bookings = {};
-        alert('Не удалось загрузить расписание. Проверьте интернет.');
     }
-    
-    renderWeek();
-    checkSavedAdminAuth();
-    checkAdminAccess();
-    setupEventListeners();
 }
+
+// Измените DOMContentLoaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Показываем регистрацию если нет пользователя
+    if (!user) {
+        showRegistrationModal();
+    } else {
+        initApp();
+    }
+});
 
 function showSuccessMessage() {
     const success = document.createElement('div');

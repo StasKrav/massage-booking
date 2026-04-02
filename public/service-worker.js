@@ -37,8 +37,15 @@ self.addEventListener('activate', event => {
 });
 
 // Перехват запросов
+// Перехват запросов - ИСПРАВЛЕННАЯ ВЕРСИЯ
 self.addEventListener('fetch', event => {
-  // Пропускаем запросы к Supabase и другим API
+  // Пропускаем запросы к API (все методы кроме GET)
+  if (event.request.url.includes('/api/') || 
+      event.request.method !== 'GET') {
+    return; // Не кэшируем API запросы и POST/DELETE
+  }
+
+  // Пропускаем запросы к Supabase (если остались)
   if (event.request.url.includes('supabase.co')) {
     return;
   }
@@ -46,35 +53,21 @@ self.addEventListener('fetch', event => {
   event.respondWith(
     caches.match(event.request)
       .then(response => {
-        // Если файл в кэше - возвращаем его
         if (response) {
           return response;
         }
 
-        // Иначе делаем сетевой запрос
         return fetch(event.request)
           .then(response => {
-            // Проверяем валидный ли ответ
-            if (!response || response.status !== 200 || response.type !== 'basic') {
-              return response;
+            // Кэшируем только успешные GET-запросы
+            if (response && response.status === 200 && response.type === 'basic') {
+              const responseToCache = response.clone();
+              caches.open(CACHE_NAME)
+                .then(cache => {
+                  cache.put(event.request, responseToCache);
+                });
             }
-
-            // Клонируем response, потому что он одноразовый
-            const responseToCache = response.clone();
-
-            // Кэшируем новый ресурс
-            caches.open(CACHE_NAME)
-              .then(cache => {
-                cache.put(event.request, responseToCache);
-              });
-
             return response;
-          })
-          .catch(() => {
-            // Если offline и запрос HTML - показываем офлайн страницу
-            if (event.request.headers.get('accept').includes('text/html')) {
-              return caches.match('/index.html');
-            }
           });
       })
   );
