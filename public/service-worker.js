@@ -1,18 +1,18 @@
-const CACHE_NAME = 'massage-booking-v3';
+const CACHE_NAME = 'massage-booking-v4';
+// Убираем app.js и storage.js из кэша, чтобы они всегда были свежими
 const urlsToCache = [
   '/',
   '/index.html',
   '/style.css',
-  '/app.js',
-  '/storage.js',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css'
+  // app.js и storage.js НЕ кэшируем - всегда загружаем с сервера
 ];
 
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Кэшируем файлы приложения');
+        console.log('Кэшируем только статику');
         return cache.addAll(urlsToCache);
       })
       .then(() => self.skipWaiting())
@@ -34,16 +34,15 @@ self.addEventListener('activate', event => {
   );
 });
 
-// ИСПРАВЛЕННЫЙ обработчик fetch
+// Пропускаем все запросы к .js файлам, чтобы они всегда были свежими
 self.addEventListener('fetch', event => {
-  // Пропускаем все запросы к API
-  if (event.request.url.includes('/api/')) {
-    return;
-  }
+  const url = event.request.url;
   
-  // Пропускаем все НЕ GET запросы (POST, DELETE, etc.)
-  if (event.request.method !== 'GET') {
-    return;
+  // Не кэшируем JS файлы и API
+  if (url.includes('.js') || 
+      url.includes('/api/') || 
+      event.request.method !== 'GET') {
+    return; // Идём в сеть
   }
 
   event.respondWith(
@@ -52,18 +51,7 @@ self.addEventListener('fetch', event => {
         if (response) {
           return response;
         }
-
-        return fetch(event.request).then(response => {
-          // Кэшируем только успешные GET-запросы
-          if (response && response.status === 200) {
-            const responseToCache = response.clone();
-            caches.open(CACHE_NAME)
-              .then(cache => {
-                cache.put(event.request, responseToCache);
-              });
-          }
-          return response;
-        });
+        return fetch(event.request);
       })
   );
 });
