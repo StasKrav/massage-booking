@@ -191,15 +191,11 @@ if ('serviceWorker' in navigator) {
 }
 
 
-
-// Проверяем, зарегистрирован ли пользователь
-if (!user) {
-    showRegistrationModal();
-}
-
-
 function showRegistrationModal() {
-    // Создаем модалку регистрации
+    // Удаляем старую модалку если есть
+    const oldModal = document.getElementById('registration-modal');
+    if (oldModal) oldModal.remove();
+    
     const modal = document.createElement('div');
     modal.className = 'modal';
     modal.id = 'registration-modal';
@@ -207,89 +203,66 @@ function showRegistrationModal() {
         <div class="modal-content">
             <div class="modal-header">
                 <i class="fas fa-user-plus"></i>
-                <h3>Привет! 👋</h3>
+                <h3>Привет!</h3>
             </div>
-            <p style="margin-bottom: 20px; color: #8b7355;">Давайте познакомимся, чтобы упростить запись</p>
+            <p style="margin-bottom: 20px; color: #8b7355;">Давайте познакомимся</p>
             
-            <form id="registration-form">
-                <div class="form-group">
-                    <label for="user-name">
-                        <i class="fas fa-user"></i> Как вас зовут?
-                    </label>
-                    <input type="text" id="user-name" placeholder="Можно имя или псевдоним" required>
-                </div>
-                
-                <div class="form-group">
-                    <label for="user-phone">
-                        <i class="fas fa-phone"></i> Ваш телефон
-                    </label>
-                    <input type="tel" id="user-phone" placeholder="+7 (999) 123-45-67" required>
-                </div>
-                
-                <div class="modal-footer">
-                    <button type="submit" class="btn-primary">
-                        <i class="fas fa-check"></i> Продолжить
-                    </button>
-                </div>
-            </form>
+            <div class="form-group">
+                <label>Как вас зовут?</label>
+                <input type="text" id="user-name" placeholder="Ваше имя" autocomplete="off">
+            </div>
+            
+            <div class="form-group">
+                <label>Телефон</label>
+                <input type="tel" id="user-phone" placeholder="+7 999 123-45-67" autocomplete="off">
+            </div>
+            
+            <div class="modal-footer">
+                <button id="register-btn" class="btn-primary">Продолжить</button>
+            </div>
         </div>
     `;
     
     document.body.appendChild(modal);
     
- 
-
-    document.getElementById('registration-form').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const name = document.getElementById('user-name').value.trim();
-            const phone = document.getElementById('user-phone').value.trim();
-            
-            // ВАЛИДАЦИЯ:
-            // 1. Только кириллица, пробелы и дефисы для имени
-            const nameRegex = /^[А-ЯЁа-яё\s\-]+$/;
-            if (!nameRegex.test(name)) {
-                alert('Имя должно содержать только русские буквы, пробелы или дефисы');
-                return;
-            }
-            
-            // 2. Проверка длины имени (2-20 символов)
-            if (name.length < 2 || name.length > 20) {
-                alert('Имя должно быть от 2 до 20 символов');
-                return;
-            }
-            
-            // 4. Проверка длины телефона (11-12 цифр с + или без)
-            const cleanPhone = phone.replace('+', '');
-            if (cleanPhone.length < 11 || cleanPhone.length > 12) {
-                alert('Телефон должен содержать 11-12 цифр (например: 79991234567 или +79991234567)');
-                return;
-            }
-            
-            // 5. Нормализуем телефон (добавляем +7 если нет)
-            let normalizedPhone = phone;
-            if (!phone.startsWith('+')) {
-                if (phone.startsWith('7') || phone.startsWith('8')) {
-                    normalizedPhone = '+7' + phone.slice(1);
-                } else {
-                    normalizedPhone = '+7' + phone;
-                }
-            }
-            
-            // Сохраняем с нормализованным телефоном
-            user = { name, phone: normalizedPhone };
-            localStorage.setItem('massage_user', JSON.stringify(user));
+    // Прямой обработчик без формы
+    const btn = document.getElementById('register-btn');
+    const nameInput = document.getElementById('user-name');
+    const phoneInput = document.getElementById('user-phone');
+    
+    const saveUser = () => {
+        const name = nameInput.value.trim();
+        const phone = phoneInput.value.trim();
         
+        if (!name || !phone) {
+            alert('Заполните оба поля');
+            return;
+        }
         
-        // Показываем приветствие
-        showWelcomeMessage(name);
+        // Простая валидация
+        if (name.length < 2) {
+            alert('Имя слишком короткое');
+            return;
+        }
         
-        // Удаляем модалку
+        // Нормализуем телефон
+        let cleanPhone = phone.replace(/[^0-9+]/g, '');
+        if (!cleanPhone.startsWith('+')) {
+            cleanPhone = '+7' + cleanPhone.replace(/^[78]/, '');
+        }
+        
+        user = { name: name, phone: cleanPhone };
+        localStorage.setItem('massage_user', JSON.stringify(user));
+        
         modal.remove();
-        
-        // Запускаем основное приложение
         initApp();
-    });
+    };
+    
+    btn.onclick = saveUser;
+    
+    // Enter на полях
+    nameInput.onkeypress = (e) => { if (e.key === 'Enter') saveUser(); };
+    phoneInput.onkeypress = (e) => { if (e.key === 'Enter') saveUser(); };
 }
 
 function showWelcomeMessage(name) {

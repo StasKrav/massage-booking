@@ -6,6 +6,19 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2"
-  }
+    "express": "^4.22.1"
+  },
+  "description": "",
+  "main": "server.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/StasKrav/massage-booking.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/StasKrav/massage-booking/issues"
+  },
+  "homepage": "https://github.com/StasKrav/massage-booking#readme"
 }
