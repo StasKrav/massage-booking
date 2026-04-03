@@ -269,7 +269,7 @@ function showWelcomeMessage(name) {
     const welcome = document.createElement('div');
     welcome.className = 'welcome-message';
     welcome.innerHTML = `
-        <div>Привет, ${name}! Теперь запись займет 2 клика ✨</div>
+        <div>Привет, ${name}! Теперь запись займет 2 клика</div>
     `;
     welcome.style.cssText = `
         position: fixed;
@@ -496,7 +496,7 @@ function openBookingModal(time) {
     confirmDiv.id = 'booking-confirm';
     confirmDiv.innerHTML = `
         <div style="text-align: center; padding: 20px 0;">
-            <div style="font-size: 48px; margin-bottom: 15px;">✨</div>
+            <div style="font-size: 48px; margin-bottom: 15px;"></div>
             <h3 style="color: #5c4b37; margin-bottom: 10px;">Всё верно?</h3>
             <div style="background: #f9f3e9; padding: 15px; border-radius: 10px; margin: 20px 0;">
                 <div><strong>Клиент:</strong> ${user.name}</div>
@@ -507,7 +507,6 @@ function openBookingModal(time) {
                         <option>Общий массаж</option>
                         <option>Массаж спины</option>
                         <option>Расслабляющий</option>
-                        <option>Спортивный</option>
                     </select>
                 </div>
             </div>
@@ -653,7 +652,6 @@ function showSuccessMessage() {
     }, 3000);
 }
 
-// Сохранение записи
 // Сохранение записи
 async function saveBooking() {
 	const serviceRegex = /^[А-ЯЁа-яё\s\-\d]+$/;
@@ -1122,7 +1120,6 @@ function getMonthName(date) {
     return months[date.getMonth()];
 }
 
-// В КОНЕЦ app.js (перед последней закрывающей скобкой) добавляем:
 
 // Функция для проигрывания звука
 function playNotificationSound() {
@@ -1173,7 +1170,6 @@ function playSimpleSound() {
   }
 }
 
-// Запрашиваем разрешение на уведомления
 // Запрашиваем разрешение на уведомления
 async function requestNotificationPermission() {
     if ("Notification" in window) {
