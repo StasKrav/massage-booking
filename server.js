@@ -1,108 +1,140 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
+const execAsync = promisify(exec);
 const app = express();
 app.use(express.json());
-app.use(express.static('public'));
 
-// Путь к файлу с записями
-const DATA_FILE = path.join(__dirname, 'data', 'bookings.json');
+const DATA_FILE = 'bookings.json';
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+const GITHUB_REPO = process.env.GITHUB_REPO || 'StasKrav/massage-booking';
 
-// Убедимся, что папка data существует
-if (!fs.existsSync(path.join(__dirname, 'data'))) {
-    fs.mkdirSync(path.join(__dirname, 'data'));
-}
-
-// Инициализируем файл если его нет
+// Инициализация файла
 if (!fs.existsSync(DATA_FILE)) {
     fs.writeFileSync(DATA_FILE, JSON.stringify({}));
 }
 
-// API: Получить все записи
-app.get('/api/bookings', (req, res) => {
+// Функция сохранения в GitHub
+async function saveToGitHub() {
+    if (!GITHUB_TOKEN) {
+        console.log('⚠️ Нет GitHub токена, данные только локально');
+        return;
+    }
+    
     try {
-        const bookings = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-        // Фильтруем только будущие записи
-        const today = new Date().toISOString().split('T')[0];
-        const filtered = {};
+        const content = fs.readFileSync(DATA_FILE, 'utf8');
+        const encodedContent = Buffer.from(content).toString('base64');
         
-        Object.entries(bookings).forEach(([key, booking]) => {
-            if (booking.date >= today) {
-                filtered[key] = booking;
+        // Получаем текущий файл из GitHub (чтобы получить sha)
+        const getRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${DATA_FILE}`, {
+            headers: {
+                'Authorization': `token ${GITHUB_TOKEN}`,
+                'Accept': 'application/vnd.github.v3+json'
             }
         });
         
-        res.json(filtered);
+        let sha = null;
+        if (getRes.ok) {
+            const data = await getRes.json();
+            sha = data.sha;
+        }
+        
+        // Обновляем или создаём файл
+        const putRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${DATA_FILE}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `token ${GITHUB_TOKEN}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/vnd.github.v3+json'
+            },
+            body: JSON.stringify({
+                message: `Auto-save bookings ${new Date().toISOString()}`,
+                content: encodedContent,
+                sha: sha
+            })
+        });
+        
+        if (putRes.ok) {
+            console.log('✅ Данные сохранены в GitHub');
+        } else {
+            console.error('❌ Ошибка сохранения в GitHub:', await putRes.text());
+        }
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.error('❌ GitHub save error:', error);
     }
-});
+}
 
-// API: Создать запись
-app.post('/api/bookings', (req, res) => {
+// Функция загрузки из GitHub при запуске
+async function loadFromGitHub() {
+    if (!GITHUB_TOKEN) return;
+    
     try {
-        const { date, time, name, phone, service } = req.body;
+        const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${DATA_FILE}`, {
+            headers: {
+                'Authorization': `token ${GITHUB_TOKEN}`,
+                'Accept': 'application/vnd.github.v3+json'
+            }
+        });
         
-        // Валидация
-        if (!date || !time || !name || !phone) {
-            return res.status(400).json({ error: 'Не все поля заполнены' });
+        if (res.ok) {
+            const data = await res.json();
+            const content = Buffer.from(data.content, 'base64').toString('utf8');
+            fs.writeFileSync(DATA_FILE, content);
+            console.log('✅ Данные загружены из GitHub');
         }
-        
-        const bookings = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-        const key = `${date}_${time}`;
-        
-        // Проверяем, не занято ли время
-        if (bookings[key]) {
-            return res.status(409).json({ error: 'Это время уже занято' });
-        }
-        
-        bookings[key] = { date, time, name, phone, service: service || 'Общий массаж' };
-        fs.writeFileSync(DATA_FILE, JSON.stringify(bookings, null, 2));
-        
-        res.json({ success: true, booking: bookings[key] });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.log('ℹ️ GitHub файл не найден, создаём новый');
     }
+}
+
+// Загружаем данные при старте
+await loadFromGitHub();
+
+// API endpoints
+app.get('/api/bookings', (req, res) => {
+    const bookings = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    res.json(bookings);
 });
 
-// API: Удалить запись (только для админа)
-app.delete('/api/bookings/:date/:time', (req, res) => {
-    try {
-        const { date, time } = req.params;
-        const { adminPhone } = req.body;
-        
-        // Простая проверка админа (можно улучшить)
-        const ADMIN_PHONES = ['+79954801080']; // Ваш телефон
-        
-        if (!ADMIN_PHONES.includes(adminPhone)) {
-            return res.status(403).json({ error: 'Нет прав для удаления' });
-        }
-        
-        const bookings = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-        const key = `${date}_${time}`;
-        
-        if (!bookings[key]) {
-            return res.status(404).json({ error: 'Запись не найдена' });
-        }
-        
-        delete bookings[key];
-        fs.writeFileSync(DATA_FILE, JSON.stringify(bookings, null, 2));
-        
-        res.json({ success: true });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
+app.post('/api/bookings', async (req, res) => {
+    const bookings = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    const key = `${req.body.date}_${req.body.time}`;
+    
+    if (bookings[key]) {
+        return res.status(409).json({ error: 'Время уже занято' });
     }
+    
+    bookings[key] = req.body;
+    fs.writeFileSync(DATA_FILE, JSON.stringify(bookings, null, 2));
+    
+    // Сохраняем в GitHub
+    await saveToGitHub();
+    
+    res.json({ success: true });
 });
 
-// Обработка всех остальных маршрутов (для SPA)
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+app.delete('/api/bookings/:date/:time', async (req, res) => {
+    const bookings = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    const key = `${req.params.date}_${req.params.time}`;
+    delete bookings[key];
+    fs.writeFileSync(DATA_FILE, JSON.stringify(bookings, null, 2));
+    
+    // Сохраняем в GitHub
+    await saveToGitHub();
+    
+    res.json({ success: true });
 });
+
+// Периодическое сохранение (каждые 5 минут)
+setInterval(async () => {
+    await saveToGitHub();
+    console.log('🔄 Периодическое сохранение в GitHub');
+}, 5 * 60 * 1000);
+
+app.use(express.static('.'));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
