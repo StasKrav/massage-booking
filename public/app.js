@@ -640,7 +640,6 @@ function showSuccessMessage() {
         border-radius: 12px;
         z-index: 1000;
         box-shadow: 0 5px 20px rgba(92, 75, 55, 0.2);
-        border-left: 4px solid #10b981;
         animation: slideUp 0.5s ease;
     `;
     
