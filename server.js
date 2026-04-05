@@ -10,7 +10,6 @@ const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 
-// Путь к файлу с записями
 const DATA_FILE = path.join(__dirname, 'data', 'bookings.json');
 
 // Убедимся, что папка data существует
@@ -18,76 +17,60 @@ if (!fs.existsSync(path.join(__dirname, 'data'))) {
     fs.mkdirSync(path.join(__dirname, 'data'), { recursive: true });
 }
 
-// Инициализируем файл если его нет
 if (!fs.existsSync(DATA_FILE)) {
     fs.writeFileSync(DATA_FILE, JSON.stringify({}));
 }
 
-// ============ ФУНКЦИЯ ОЧИСТКИ СТАРЫХ ЗАПИСЕЙ ============
+// Функция получения сегодняшней даты по МОСКОВСКОМУ времени
+function getTodayMsk() {
+    const now = new Date();
+    // Сдвигаем на +3 часа (Москва)
+    const mskTime = new Date(now.getTime() + (3 * 60 * 60 * 1000));
+    return mskTime.toISOString().split('T')[0];
+}
+
+// Функция очистки старых записей (по МОСКОВСКОМУ времени)
 function cleanOldBookings(bookings) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Обнуляем время для корректного сравнения
+    const todayMsk = getTodayMsk();
     
-    let cleaned = false;
     const cleanedBookings = {};
-    const oldBookings = [];
+    let deletedCount = 0;
     
     Object.entries(bookings).forEach(([key, booking]) => {
-        const bookingDate = new Date(booking.date);
-        bookingDate.setHours(0, 0, 0, 0);
-        
-        // Оставляем только записи за сегодня и будущие
-        if (bookingDate >= today) {
-            cleanedBookings[key] = booking;
+        // Сравниваем даты как строки
+        if (booking.date < todayMsk) {
+            deletedCount++;
+            // Пропускаем - удаляем
         } else {
-            cleaned = true;
-            oldBookings.push(`${booking.date} ${booking.time} - ${booking.name}`);
+            cleanedBookings[key] = booking;
         }
     });
     
-    if (cleaned) {
-        console.log(`🗑️ Удалено старых записей: ${oldBookings.length}`);
-        oldBookings.forEach(old => console.log(`   - ${old}`));
-        console.log(`✅ Осталось активных записей: ${Object.keys(cleanedBookings).length}`);
+    if (deletedCount > 0) {
+        console.log(`🗑️ Удалено старых записей: ${deletedCount}`);
+        console.log(`✅ Осталось записей: ${Object.keys(cleanedBookings).length}`);
     }
     
     return cleanedBookings;
 }
 
-// Функция для выполнения очистки с сохранением
-function performCleanup() {
-    try {
-        if (!fs.existsSync(DATA_FILE)) return;
-        
-        let bookings = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-        const oldCount = Object.keys(bookings).length;
-        
-        const cleanedBookings = cleanOldBookings(bookings);
-        
-        if (oldCount !== Object.keys(cleanedBookings).length) {
-            fs.writeFileSync(DATA_FILE, JSON.stringify(cleanedBookings, null, 2));
-            console.log(`🧹 [${new Date().toLocaleString()}] Очистка выполнена: ${oldCount} -> ${Object.keys(cleanedBookings).length} записей`);
-        } else {
-            console.log(`✅ [${new Date().toLocaleString()}] Старых записей не найдено. Всего записей: ${oldCount}`);
-        }
-    } catch (error) {
-        console.error('❌ Ошибка при очистке:', error.message);
-    }
-}
-
-// ============ API ============
-
-// API: Получить все записи (только будущие)
+// API: Получить все записи
 app.get('/api/bookings', (req, res) => {
     try {
         let bookings = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
         
-        // Фильтруем только будущие записи
-        const today = new Date().toISOString().split('T')[0];
+        // Автоматическая очистка при каждом запросе
+        const cleaned = cleanOldBookings(bookings);
+        if (JSON.stringify(bookings) !== JSON.stringify(cleaned)) {
+            fs.writeFileSync(DATA_FILE, JSON.stringify(cleaned, null, 2));
+            bookings = cleaned;
+        }
+        
+        const todayMsk = getTodayMsk();
         const filtered = {};
         
         Object.entries(bookings).forEach(([key, booking]) => {
-            if (booking.date >= today) {
+            if (booking.date >= todayMsk) {
                 filtered[key] = booking;
             }
         });
@@ -98,30 +81,22 @@ app.get('/api/bookings', (req, res) => {
     }
 });
 
-// API: Получить все записи (включая прошлые - для админа)
-app.get('/api/bookings/all', (req, res) => {
-    try {
-        const bookings = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-        res.json(bookings);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
 // API: Создать запись
 app.post('/api/bookings', (req, res) => {
     try {
         const { date, time, name, phone, service } = req.body;
         
-        // Валидация
         if (!date || !time || !name || !phone) {
             return res.status(400).json({ error: 'Не все поля заполнены' });
         }
         
         let bookings = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+        
+        // Сначала очищаем старые
+        bookings = cleanOldBookings(bookings);
+        
         const key = `${date}_${time}`;
         
-        // Проверяем, не занято ли время
         if (bookings[key]) {
             return res.status(409).json({ error: 'Это время уже занято' });
         }
@@ -131,9 +106,10 @@ app.post('/api/bookings', (req, res) => {
             time, 
             name, 
             phone, 
-            service: service || 'Общий массаж', 
-            createdAt: new Date().toISOString() 
+            service: service || 'Общий массаж',
+            createdAt: new Date().toISOString()
         };
+        
         fs.writeFileSync(DATA_FILE, JSON.stringify(bookings, null, 2));
         
         console.log(`📝 Новая запись: ${date} ${time} - ${name}`);
@@ -144,20 +120,19 @@ app.post('/api/bookings', (req, res) => {
     }
 });
 
-// API: Удалить запись (только для админа)
+// API: Удалить запись (админ)
 app.delete('/api/bookings/:date/:time', (req, res) => {
     try {
         const { date, time } = req.params;
         const { adminPhone } = req.body;
         
-        // Простая проверка админа
         const ADMIN_PHONES = ['+79954801080'];
         
         if (!ADMIN_PHONES.includes(adminPhone)) {
             return res.status(403).json({ error: 'Нет прав для удаления' });
         }
         
-        const bookings = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+        let bookings = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
         const key = `${date}_${time}`;
         
         if (!bookings[key]) {
@@ -175,65 +150,24 @@ app.delete('/api/bookings/:date/:time', (req, res) => {
     }
 });
 
-// API: Ручная очистка (для админа)
-app.post('/api/cleanup', (req, res) => {
-    try {
-        const { adminPhone } = req.body;
-        const ADMIN_PHONES = ['+79954801080'];
-        
-        if (!ADMIN_PHONES.includes(adminPhone)) {
-            return res.status(403).json({ error: 'Нет прав' });
-        }
-        
-        performCleanup();
-        
-        res.json({ success: true, message: 'Очистка выполнена' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// API: Статистика
-app.get('/api/stats', (req, res) => {
+// API: Получить все записи (для админа)
+app.get('/api/bookings/all', (req, res) => {
     try {
         const bookings = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-        const bookingsArray = Object.values(bookings);
-        const today = new Date().toISOString().split('T')[0];
-        
-        const stats = {
-            total: bookingsArray.length,
-            uniqueClients: new Set(bookingsArray.map(b => b.phone)).size,
-            todayCount: bookingsArray.filter(b => b.date === today).length
-        };
-        
-        res.json(stats);
+        res.json(bookings);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-// Обработка всех остальных маршрутов (для SPA)
+// Остальные маршруты
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// ============ ЗАПУСК СЕРВЕРА ============
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🚀 Сервер запущен на порту ${PORT}`);
-    console.log(`📁 Файл данных: ${DATA_FILE}`);
-    console.log(`🧹 Автоочистка старых записей: включена (каждый час)\n`);
-    
-    // Запускаем очистку при старте сервера
-    setTimeout(() => {
-        console.log('🧹 Запуск начальной очистки...');
-        performCleanup();
-    }, 3000); // Через 3 секунды после старта
-    
-    // Запускаем периодическую очистку каждый час
-    setInterval(() => {
-        console.log('\n⏰ Запуск плановой очистки...');
-        performCleanup();
-    }, 60 * 60 * 1000); // 60 минут * 60 секунд * 1000 мс
+    console.log(`🕐 Московское время сейчас: ${new Date(new Date().getTime() + (3 * 60 * 60 * 1000)).toISOString().replace('T', ' ').slice(0, 19)}`);
+    console.log(`🧹 Автоочистка: записи за прошедшие дни удаляются автоматически\n`);
 });
