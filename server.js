@@ -2,10 +2,6 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import dotenv from 'dotenv';
-
-// Загружаем переменные окружения
-dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,7 +10,7 @@ const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 
-// GitHub конфигурация
+// GitHub конфигурация - берем переменные окружения
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_REPO = process.env.GITHUB_REPO || 'StasKrav/massage-booking';
 const GITHUB_FILE_PATH = 'data/bookings.json';
@@ -23,7 +19,11 @@ const GITHUB_BRANCH = process.env.GITHUB_BRANCH || 'main';
 // Проверка наличия токена
 if (!GITHUB_TOKEN) {
     console.error('❌ ВНИМАНИЕ: GITHUB_TOKEN не установлен!');
-    console.error('📌 Создайте файл .env с содержимым: GITHUB_TOKEN=ваш_токен');
+    console.error('📌 Добавьте переменную окружения GITHUB_TOKEN в настройках Render');
+} else {
+    console.log('✅ GitHub токен найден');
+    console.log(`📦 Репозиторий: ${GITHUB_REPO}`);
+    console.log(`🌿 Ветка: ${GITHUB_BRANCH}`);
 }
 
 // Локальный файл как кэш
@@ -177,7 +177,7 @@ function saveToLocal(bookings) {
     }
 }
 
-// ============ ФУНКЦИЯ ОЧИСТКИ СТАРЫХ ЗАПИСЕЙ ============
+// Функция очистки старых записей
 function cleanOldBookings(bookings) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -200,28 +200,23 @@ function cleanOldBookings(bookings) {
     
     if (cleaned) {
         console.log(`🗑️ Удалено старых записей: ${oldBookings.length}`);
-        oldBookings.forEach(old => console.log(`   - ${old}`));
         console.log(`✅ Осталось активных записей: ${Object.keys(cleanedBookings).length}`);
     }
     
     return cleanedBookings;
 }
 
-// ============ API ============
-
 // API: Получить все записи (только будущие)
 app.get('/api/bookings', async (req, res) => {
     try {
         let bookings = await loadFromGitHub();
         
-        // Очищаем старые записи
         const cleaned = cleanOldBookings(bookings);
         if (JSON.stringify(bookings) !== JSON.stringify(cleaned)) {
             await saveToGitHub(cleaned);
             bookings = cleaned;
         }
         
-        // Фильтруем только будущие записи
         const today = new Date().toISOString().split('T')[0];
         const filtered = {};
         
@@ -237,7 +232,7 @@ app.get('/api/bookings', async (req, res) => {
     }
 });
 
-// API: Получить все записи (включая прошлые - для админа)
+// API: Получить все записи (включая прошлые)
 app.get('/api/bookings/all', async (req, res) => {
     try {
         const bookings = await loadFromGitHub();
@@ -282,7 +277,7 @@ app.post('/api/bookings', async (req, res) => {
     }
 });
 
-// API: Удалить запись (только для админа)
+// API: Удалить запись
 app.delete('/api/bookings/:date/:time', async (req, res) => {
     try {
         const { date, time } = req.params;
@@ -312,26 +307,6 @@ app.delete('/api/bookings/:date/:time', async (req, res) => {
     }
 });
 
-// API: Ручная очистка (для админа)
-app.post('/api/cleanup', async (req, res) => {
-    try {
-        const { adminPhone } = req.body;
-        const ADMIN_PHONES = ['+79954801080'];
-        
-        if (!ADMIN_PHONES.includes(adminPhone)) {
-            return res.status(403).json({ error: 'Нет прав' });
-        }
-        
-        let bookings = await loadFromGitHub();
-        const cleaned = cleanOldBookings(bookings);
-        await saveToGitHub(cleaned);
-        
-        res.json({ success: true, message: 'Очистка выполнена' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
 // API: Статистика
 app.get('/api/stats', async (req, res) => {
     try {
@@ -351,37 +326,16 @@ app.get('/api/stats', async (req, res) => {
     }
 });
 
-// API: Принудительная синхронизация с GitHub
-app.post('/api/sync', async (req, res) => {
-    try {
-        const { adminPhone } = req.body;
-        const ADMIN_PHONES = ['+79954801080'];
-        
-        if (!ADMIN_PHONES.includes(adminPhone)) {
-            return res.status(403).json({ error: 'Нет прав' });
-        }
-        
-        const bookings = await loadFromGitHub();
-        await saveToGitHub(bookings);
-        
-        res.json({ success: true, message: 'Синхронизация выполнена' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Обработка всех остальных маршрутов (для SPA)
+// Обработка всех остальных маршрутов
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// ============ ЗАПУСК СЕРВЕРА ============
+// Запуск сервера
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🚀 Сервер запущен на порту ${PORT}`);
     console.log(`📦 GitHub репозиторий: ${GITHUB_REPO}`);
-    console.log(`🌿 Ветка: ${GITHUB_BRANCH}`);
     console.log(`🔑 GitHub токен: ${GITHUB_TOKEN ? '✅ установлен' : '❌ не установлен'}`);
     console.log(`💾 Локальный файл: ${LOCAL_DATA_FILE}\n`);
 });
