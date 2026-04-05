@@ -25,7 +25,7 @@ if (!fs.existsSync(DATA_FILE)) {
 function getTodayMsk() {
     const now = new Date();
     // Сдвигаем на +3 часа (Москва)
-    const mskTime = new Date(now.getTime() + (3 * 60 * 60 * 1000));
+    const mskTime = new Date(now.getTime() + (5 * 60 * 60 * 1000));
     return mskTime.toISOString().split('T')[0];
 }
 
@@ -168,6 +168,6 @@ app.get('*', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🚀 Сервер запущен на порту ${PORT}`);
-    console.log(`🕐 Московское время сейчас: ${new Date(new Date().getTime() + (3 * 60 * 60 * 1000)).toISOString().replace('T', ' ').slice(0, 19)}`);
+    console.log(`🕐 Пермское время сейчас: ${new Date(new Date().getTime() + (5 * 60 * 60 * 1000)).toISOString().replace('T', ' ').slice(0, 19)}`);
     console.log(`🧹 Автоочистка: записи за прошедшие дни удаляются автоматически\n`);
 });
