@@ -1,7 +1,7 @@
-// storage.js - ПОЛНОСТЬЮ РАБОЧАЯ ВЕРСИЯ
+// storage.js - С ПОДДЕРЖКОЙ ПОДТВЕРЖДЕНИЯ ЗАПИСЕЙ
 
 const bookingAPI = {
-    API_URL: '/api',  // ← КЛЮЧЕВОЕ СВОЙСТВО
+    API_URL: '/api',
     
     async getAllBookings() {
         try {
@@ -30,11 +30,54 @@ const bookingAPI = {
             }
             
             const result = await response.json();
-            console.log('✅ Запись сохранена:', result);
+            console.log('✅ Заявка создана (ожидает подтверждения):', result);
             
             this.notifyNewBooking(bookingData);
             
             return result.booking || bookingData;
+        } catch (error) {
+            console.error('❌ Ошибка:', error);
+            throw error;
+        }
+    },
+    
+    async confirmBooking(date, time, adminPhone) {
+        try {
+            const response = await fetch(`${this.API_URL}/bookings/${date}/${time}/confirm`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ adminPhone })
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Ошибка подтверждения');
+            }
+            
+            const result = await response.json();
+            console.log(`✅ Запись подтверждена: ${date} ${time}`);
+            return result;
+        } catch (error) {
+            console.error('❌ Ошибка:', error);
+            throw error;
+        }
+    },
+    
+    async cancelMyBooking(date, time, phone) {
+        try {
+            const response = await fetch(`${this.API_URL}/bookings/${date}/${time}/cancel`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone })
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Ошибка отмены');
+            }
+            
+            console.log(`🚫 Заявка отменена: ${date} ${time}`);
+            return await response.json();
         } catch (error) {
             console.error('❌ Ошибка:', error);
             throw error;
@@ -65,13 +108,13 @@ const bookingAPI = {
         this.playSound();
         
         if (Notification.permission === 'granted') {
-            new Notification('📅 Новая запись!', {
-                body: `${booking.name} - ${booking.time}, ${booking.service}`,
+            new Notification('📅 Новая заявка!', {
+                body: `${booking.name} - ${booking.time}, ${booking.service} (ожидает подтверждения)`,
                 icon: '/icons/icon-192.png'
             });
         }
         
-        this.showToast(`🔔 ${booking.name} записался на ${booking.time}`);
+        this.showToast(`🔔 Новая заявка от ${booking.name} на ${booking.time}`);
     },
     
     playSound() {
@@ -130,5 +173,5 @@ if (!document.querySelector('#storage-styles')) {
 }
 
 window.bookingAPI = bookingAPI;
-console.log('✅ API для Render готов');
-console.log('API_URL:', bookingAPI.API_URL);  // Должно вывести "/api"
+console.log('✅ API для Render готов (с поддержкой подтверждения записей)');
+console.log('API_URL:', bookingAPI.API_URL);

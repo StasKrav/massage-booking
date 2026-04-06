@@ -1144,3 +1144,62 @@ input:focus, select:focus {
         align-self: center;
     }
 }
+
+/* Статусы записей */
+.time-slot.pending {
+    background: #fff3cd;
+    border-color: #ffc107;
+}
+
+.time-slot.confirmed {
+    background: #d4edda;
+    border-color: #28a745;
+}
+
+.status-badge {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 12px;
+    display: inline-block;
+    margin-top: 5px;
+}
+
+.status-badge.pending {
+    background: #ffc107;
+    color: #856404;
+}
+
+.cancel-btn {
+    background: #ef4444;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.pending-item {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.pending-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.pending-actions button {
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 18px;
+}

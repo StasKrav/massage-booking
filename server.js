@@ -194,7 +194,7 @@ function cleanOldBookings(bookings) {
             cleanedBookings[key] = booking;
         } else {
             cleaned = true;
-            oldBookings.push(`${booking.date} ${booking.time} - ${booking.name}`);
+            oldBookings.push(`${booking.date} ${booking.time} - ${booking.name} (${booking.status || 'confirmed'})`);
         }
     });
     
@@ -206,7 +206,9 @@ function cleanOldBookings(bookings) {
     return cleanedBookings;
 }
 
-// API: Получить все записи (только будущие)
+// ============ API ============
+
+// API: Получить все записи (все статусы, и клиент и админ видят одинаково)
 app.get('/api/bookings', async (req, res) => {
     try {
         let bookings = await loadFromGitHub();
@@ -232,7 +234,7 @@ app.get('/api/bookings', async (req, res) => {
     }
 });
 
-// API: Получить все записи (включая прошлые)
+// API: Получить все записи (включая прошлые - для админа)
 app.get('/api/bookings/all', async (req, res) => {
     try {
         const bookings = await loadFromGitHub();
@@ -242,7 +244,7 @@ app.get('/api/bookings/all', async (req, res) => {
     }
 });
 
-// API: Создать запись
+// API: Создать запись (со статусом pending)
 app.post('/api/bookings', async (req, res) => {
     try {
         const { date, time, name, phone, service } = req.body;
@@ -254,7 +256,8 @@ app.post('/api/bookings', async (req, res) => {
         let bookings = await loadFromGitHub();
         const key = `${date}_${time}`;
         
-        if (bookings[key]) {
+        // Проверяем, не занято ли время (подтвержденные или ожидающие)
+        if (bookings[key] && bookings[key].status !== 'rejected') {
             return res.status(409).json({ error: 'Это время уже занято' });
         }
         
@@ -264,12 +267,14 @@ app.post('/api/bookings', async (req, res) => {
             name, 
             phone, 
             service: service || 'Общий массаж',
-            createdAt: new Date().toISOString()
+            status: 'pending',
+            createdAt: new Date().toISOString(),
+            confirmedAt: null
         };
         
         await saveToGitHub(bookings);
         
-        console.log(`📝 Новая запись: ${date} ${time} - ${name}`);
+        console.log(`📝 Новая заявка (pending): ${date} ${time} - ${name}`);
         
         res.json({ success: true, booking: bookings[key] });
     } catch (error) {
@@ -277,7 +282,70 @@ app.post('/api/bookings', async (req, res) => {
     }
 });
 
-// API: Удалить запись
+// API: Подтвердить запись (админ)
+app.patch('/api/bookings/:date/:time/confirm', async (req, res) => {
+    try {
+        const { date, time } = req.params;
+        const { adminPhone } = req.body;
+        
+        const ADMIN_PHONES = ['+79954801080'];
+        if (!ADMIN_PHONES.includes(adminPhone)) {
+            return res.status(403).json({ error: 'Нет прав' });
+        }
+        
+        let bookings = await loadFromGitHub();
+        const key = `${date}_${time}`;
+        
+        if (!bookings[key]) {
+            return res.status(404).json({ error: 'Запись не найдена' });
+        }
+        
+        bookings[key].status = 'confirmed';
+        bookings[key].confirmedAt = new Date().toISOString();
+        
+        await saveToGitHub(bookings);
+        console.log(`✅ Подтверждена: ${date} ${time} - ${bookings[key].name}`);
+        
+        res.json({ success: true, booking: bookings[key] });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// API: Отменить запись (клиент по телефону)
+app.delete('/api/bookings/:date/:time/cancel', async (req, res) => {
+    try {
+        const { date, time } = req.params;
+        const { phone } = req.body;
+        
+        let bookings = await loadFromGitHub();
+        const key = `${date}_${time}`;
+        
+        if (!bookings[key]) {
+            return res.status(404).json({ error: 'Запись не найдена' });
+        }
+        
+        // Проверяем, что отменяет тот, кто записывался
+        if (bookings[key].phone !== phone) {
+            return res.status(403).json({ error: 'Нельзя отменить чужую запись' });
+        }
+        
+        // Если запись еще не подтверждена - удаляем полностью
+        if (bookings[key].status === 'pending') {
+            delete bookings[key];
+            console.log(`🚫 Клиент отменил заявку: ${date} ${time}`);
+        } else {
+            return res.status(400).json({ error: 'Подтвержденную запись нельзя отменить' });
+        }
+        
+        await saveToGitHub(bookings);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// API: Удалить запись (админ)
 app.delete('/api/bookings/:date/:time', async (req, res) => {
     try {
         const { date, time } = req.params;
@@ -317,7 +385,8 @@ app.get('/api/stats', async (req, res) => {
         const stats = {
             total: bookingsArray.length,
             uniqueClients: new Set(bookingsArray.map(b => b.phone)).size,
-            todayCount: bookingsArray.filter(b => b.date === today).length
+            todayCount: bookingsArray.filter(b => b.date === today && b.status === 'confirmed').length,
+            pendingCount: bookingsArray.filter(b => b.status === 'pending').length
         };
         
         res.json(stats);
@@ -337,5 +406,6 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n🚀 Сервер запущен на порту ${PORT}`);
     console.log(`📦 GitHub репозиторий: ${GITHUB_REPO}`);
     console.log(`🔑 GitHub токен: ${GITHUB_TOKEN ? '✅ установлен' : '❌ не установлен'}`);
-    console.log(`💾 Локальный файл: ${LOCAL_DATA_FILE}\n`);
+    console.log(`💾 Локальный файл: ${LOCAL_DATA_FILE}`);
+    console.log(`🎨 Система подтверждения записей: ВКЛЮЧЕНА\n`);
 });

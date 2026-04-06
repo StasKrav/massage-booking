@@ -403,6 +403,7 @@ function selectDay(dateStr, date) {
 }
 
 // Рендеринг слотов времени (10:00 - 20:00)
+// Рендеринг слотов времени (10:00 - 20:00)
 function renderTimeSlots() {
     const slotsContainer = document.getElementById('time-slots');
     slotsContainer.innerHTML = '';
@@ -411,7 +412,6 @@ function renderTimeSlots() {
     const todayStr = formatDate(now, 'input');
     const isToday = selectedDate === todayStr;
     
-    // Вспомогательная функция для нормализации времени
     const normalizeTime = (timeStr) => {
         if (!timeStr) return null;
         const hour = timeStr.split(':')[0];
@@ -425,6 +425,7 @@ function renderTimeSlots() {
             return keyDate === selectedDate || booking.date === selectedDate;
         })
         .map(([key, booking]) => ({
+            key: key,
             time: normalizeTime(booking.time || key.split('_')[1]),
             ...booking
         }));
@@ -432,14 +433,29 @@ function renderTimeSlots() {
     // Генерация слотов с 10:00 до 20:00
     for (let hour = 10; hour < 20; hour++) {
         const time = `${hour.toString().padStart(2, '0')}:00`;
-        
-        // Ищем запись на это время (сравниваем нормализованные значения)
         const booking = dateBookings.find(b => b.time === time);
         
         const isPast = isToday && hour <= now.getHours();
         
         const slot = document.createElement('div');
-        slot.className = `time-slot ${booking ? 'booked' : 'free'} ${isPast ? 'past' : ''}`;
+        
+        // Определяем класс в зависимости от статуса
+        let statusClass = 'free';
+        let showCancelBtn = false;
+        
+        if (booking) {
+            if (booking.status === 'confirmed') {
+                statusClass = 'confirmed';
+            } else if (booking.status === 'pending') {
+                statusClass = 'pending';
+                // Показываем кнопку отмены только для текущего пользователя
+                if (user && booking.phone === user.phone) {
+                    showCancelBtn = true;
+                }
+            }
+        }
+        
+        slot.className = `time-slot ${statusClass} ${isPast ? 'past' : ''}`;
         
         if (booking) {
             slot.innerHTML = `
@@ -447,8 +463,18 @@ function renderTimeSlots() {
                 <div class="booking-info">
                     <div class="client-name">${booking.name}</div>
                     <div class="service">${booking.service}</div>
+                    ${booking.status === 'pending' ? '<div class="status-badge pending">⏳ Ожидает</div>' : ''}
                 </div>
+                ${showCancelBtn ? `<button class="cancel-btn">Отменить</button>` : ''}
             `;
+            
+            if (showCancelBtn) {
+                const cancelBtn = slot.querySelector('.cancel-btn');
+                cancelBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    cancelMyBooking(booking.key || `${selectedDate}_${time}`, booking.phone);
+                });
+            }
         } else {
             slot.innerHTML = `
                 <div class="time">${time}</div>
@@ -466,6 +492,48 @@ function renderTimeSlots() {
         
         slotsContainer.appendChild(slot);
     }
+}
+
+// Функция отмены записи клиентом
+async function cancelMyBooking(key, phone) {
+    if (!confirm('Отменить запись?')) return;
+    
+    const [date, time] = key.split('_');
+    
+    try {
+        await bookingAPI.cancelMyBooking(date, time, phone);
+        
+        // Обновляем локальные данные
+        delete bookings[key];
+        
+        // Обновляем интерфейс
+        renderTimeSlots();
+        renderWeek();
+        
+        showMessage('❌ Запись отменена', '#ef4444');
+    } catch (error) {
+        alert(`Ошибка: ${error.message}`);
+    }
+}
+
+function showMessage(text, color) {
+    const msg = document.createElement('div');
+    msg.textContent = text;
+    msg.style.cssText = `
+        position: fixed;
+        bottom: 80px;
+        left: 20px;
+        right: 20px;
+        background: ${color};
+        color: white;
+        padding: 12px;
+        border-radius: 10px;
+        text-align: center;
+        z-index: 1000;
+        animation: slideUp 0.3s ease;
+    `;
+    document.body.appendChild(msg);
+    setTimeout(() => msg.remove(), 2000);
 }
 
 // Открытие модального окна записи
@@ -849,6 +917,24 @@ function showAdminPanel() {
                         <h4><i class="fas fa-clock"></i> Сегодня</h4>
                         <div id="today-list"></div>
                     </div>
+                    // Ожидающие подтверждения записи
+                    const pendingBookings = Object.values(bookings).filter(b => b.status === 'pending');
+                    const pendingList = document.getElementById('pending-list') || createPendingList();
+                    if (pendingList) {
+                        pendingList.innerHTML = pendingBookings.map(booking => `
+                            <div class="pending-item" data-date="${booking.date}" data-time="${booking.time}">
+                                <div class="time-badge">${booking.time}</div>
+                                <div class="booking-details">
+                                    <strong>${booking.name}</strong>
+                                    <small>${booking.phone}</small>
+                                    <div>${booking.service}</div>
+                                </div>
+                                <div class="pending-actions">
+                                    <button class="confirm-pending" style="background:#10b981;">✅</button>
+                                    <button class="reject-pending" style="background:#ef4444;">❌</button>
+                                </div>
+                            </div>
+                        `).join('');
                 </div>
                 
                 <div id="tab-bookings" class="admin-tab-content">
@@ -964,6 +1050,26 @@ function showAdminPanel() {
         if (e.target.id === 'admin-panel') {
             panel.remove();
         }
+    });
+
+     document.querySelectorAll('.confirm-pending').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const item = btn.closest('.pending-item');
+            const date = item.dataset.date;
+            const time = item.dataset.time;
+            await bookingAPI.confirmBooking(date, time, user.phone);
+            location.reload();
+        });
+    });
+    
+    document.querySelectorAll('.reject-pending').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const item = btn.closest('.pending-item');
+            const date = item.dataset.date;
+            const time = item.dataset.time;
+            await bookingAPI.deleteBooking(date, time, user.phone);
+            location.reload();
+        });
     });
 }
 
