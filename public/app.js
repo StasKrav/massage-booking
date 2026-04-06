@@ -402,7 +402,7 @@ function selectDay(dateStr, date) {
     renderTimeSlots();
 }
 
-// Рендеринг слотов времени (10:00 - 20:00)
+ 
 // Рендеринг слотов времени (10:00 - 20:00)
 function renderTimeSlots() {
     const slotsContainer = document.getElementById('time-slots');
@@ -874,6 +874,7 @@ function showAdminPanel() {
             
             <div class="admin-tabs">
                 <button class="admin-tab active" data-tab="overview">Обзор</button>
+                <button class="admin-tab" data-tab="pending">⏳ Ожидают</button>
                 <button class="admin-tab" data-tab="bookings">Все записи</button>
                 <button class="admin-tab" data-tab="clients">Клиенты</button>
                 <button class="admin-tab" data-tab="settings">Настройки</button>
@@ -889,6 +890,16 @@ function showAdminPanel() {
                             <div class="stat-info">
                                 <div class="stat-value" id="total-bookings-admin">0</div>
                                 <div class="stat-label">Всего записей</div>
+                            </div>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <div class="stat-icon" style="background: #fff3cd;">
+                                <i class="fas fa-hourglass-half" style="color: #ffc107;"></i>
+                            </div>
+                            <div class="stat-info">
+                                <div class="stat-value" id="pending-count">0</div>
+                                <div class="stat-label">Ожидают подтверждения</div>
                             </div>
                         </div>
                         
@@ -917,24 +928,14 @@ function showAdminPanel() {
                         <h4><i class="fas fa-clock"></i> Сегодня</h4>
                         <div id="today-list"></div>
                     </div>
-                    // Ожидающие подтверждения записи
-                    const pendingBookings = Object.values(bookings).filter(b => b.status === 'pending');
-                    const pendingList = document.getElementById('pending-list') || createPendingList();
-                    if (pendingList) {
-                        pendingList.innerHTML = pendingBookings.map(booking => `
-                            <div class="pending-item" data-date="${booking.date}" data-time="${booking.time}">
-                                <div class="time-badge">${booking.time}</div>
-                                <div class="booking-details">
-                                    <strong>${booking.name}</strong>
-                                    <small>${booking.phone}</small>
-                                    <div>${booking.service}</div>
-                                </div>
-                                <div class="pending-actions">
-                                    <button class="confirm-pending" style="background:#10b981;">✅</button>
-                                    <button class="reject-pending" style="background:#ef4444;">❌</button>
-                                </div>
-                            </div>
-                        `).join('');
+                </div>
+                
+                <div id="tab-pending" class="admin-tab-content">
+                    <h4 style="margin-bottom: 15px;">
+                        <i class="fas fa-hourglass-half" style="color: #ffc107;"></i> 
+                        Записи, ожидающие подтверждения
+                    </h4>
+                    <div id="pending-list" class="pending-list"></div>
                 </div>
                 
                 <div id="tab-bookings" class="admin-tab-content">
@@ -963,28 +964,11 @@ function showAdminPanel() {
                             </button>
                         </div>
                         <small style="color: #8b7355; margin-top: 10px; display: block;">
-                            📁 Все записи хранятся в вашем браузере. Регулярно делайте бэкап!
+                            📁 Все записи хранятся в GitHub. Регулярно делайте бэкап!
                         </small>
                     </div>
                     
                     <input type="file" id="backup-file" accept=".json" style="display: none;">
-                    
-                    <div class="form-group">
-                        <label>Услуги</label>
-                        <div id="services-list">
-                            <div class="service-item">
-                                <input type="text" value="Общий массаж">
-                                <button class="remove-service"><i class="fas fa-times"></i></button>
-                            </div>
-                        </div>
-                        <button id="add-service" class="btn-secondary">
-                            <i class="fas fa-plus"></i> Добавить услугу
-                        </button>
-                    </div>
-                    
-                    <button id="save-settings" class="btn-primary">
-                        <i class="fas fa-save"></i> Сохранить настройки
-                    </button>
                 </div>
             </div>
         </div>
@@ -1018,8 +1002,7 @@ function showAdminPanel() {
     const backupExport = document.getElementById('backup-export');
     if (backupExport) {
         backupExport.addEventListener('click', () => {
-            bookingAPI.exportBookings();
-            alert('✅ Бэкап сохранен');
+            exportBackup();
         });
     }
     
@@ -1034,13 +1017,7 @@ function showAdminPanel() {
     if (backupFile) {
         backupFile.addEventListener('change', async (e) => {
             if (e.target.files.length > 0) {
-                try {
-                    await bookingAPI.importBookings(e.target.files[0]);
-                    alert('✅ Бэкап восстановлен! Обновите страницу.');
-                    location.reload();
-                } catch (error) {
-                    alert('❌ Ошибка: ' + error);
-                }
+                await importBackup(e.target.files[0]);
             }
         });
     }
@@ -1051,57 +1028,41 @@ function showAdminPanel() {
             panel.remove();
         }
     });
-
-     document.querySelectorAll('.confirm-pending').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            const item = btn.closest('.pending-item');
-            const date = item.dataset.date;
-            const time = item.dataset.time;
-            await bookingAPI.confirmBooking(date, time, user.phone);
-            location.reload();
-        });
-    });
-    
-    document.querySelectorAll('.reject-pending').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            const item = btn.closest('.pending-item');
-            const date = item.dataset.date;
-            const time = item.dataset.time;
-            await bookingAPI.deleteBooking(date, time, user.phone);
-            location.reload();
-        });
-    });
 }
 
 function loadAdminData() {
     // Считаем статистику
-    const totalBookings = Object.keys(bookings).length;
-    document.getElementById('total-bookings-admin').textContent = totalBookings;
+    const bookingsArray = Object.values(bookings);
+    const totalBookings = bookingsArray.length;
+    const pendingCount = bookingsArray.filter(b => b.status === 'pending').length;
+    const uniqueClients = new Set(bookingsArray.map(b => b.phone)).size;
     
-    // Уникальные клиенты
-    const uniqueClients = new Set(Object.values(bookings).map(b => b.phone)).size;
+    document.getElementById('total-bookings-admin').textContent = totalBookings;
+    document.getElementById('pending-count').textContent = pendingCount;
     document.getElementById('unique-clients').textContent = uniqueClients;
     
     // Популярная услуга
-    const services = Object.values(bookings).map(b => b.service);
+    const services = bookingsArray.map(b => b.service);
     const serviceCount = {};
     services.forEach(s => serviceCount[s] = (serviceCount[s] || 0) + 1);
-    const popularService = Object.keys(serviceCount).reduce((a, b) => 
-        serviceCount[a] > serviceCount[b] ? a : b, 'Нет данных'
-    );
+    const popularService = Object.keys(serviceCount).length > 0 
+        ? Object.keys(serviceCount).reduce((a, b) => serviceCount[a] > serviceCount[b] ? a : b)
+        : 'Нет данных';
     document.getElementById('popular-service').textContent = popularService;
     
     // Записи на сегодня
     const today = formatDate(new Date(), 'input');
-    const todayBookings = Object.values(bookings).filter(b => b.date === today);
+    const todayBookings = bookingsArray.filter(b => b.date === today);
     
     const todayList = document.getElementById('today-list');
     todayList.innerHTML = todayBookings.map(booking => `
-        <div class="today-item">
+        <div class="today-item ${booking.status === 'pending' ? 'pending' : ''}">
             <div class="time-badge">${booking.time}</div>
             <div class="booking-details">
                 <strong>${booking.name}</strong>
-                <small>${booking.service}</small>
+                <small>${booking.phone}</small>
+                <div class="service">${booking.service}</div>
+                ${booking.status === 'pending' ? '<span class="status-badge pending">⏳ Ожидает</span>' : ''}
             </div>
             <button class="call-btn" onclick="window.location.href='tel:${booking.phone}'">
                 <i class="fas fa-phone"></i>
@@ -1109,39 +1070,119 @@ function loadAdminData() {
         </div>
     `).join('');
     
-    // Все записи
-    const allBookings = Object.values(bookings)
-        .sort((a, b) => new Date(a.date + 'T' + a.time) - new Date(b.date + 'T' + b.time));
+    // Список ожидающих подтверждения
+    const pendingBookings = bookingsArray.filter(b => b.status === 'pending');
+    const pendingList = document.getElementById('pending-list');
+    
+    if (pendingList) {
+        if (pendingBookings.length === 0) {
+            pendingList.innerHTML = '<div style="text-align: center; padding: 40px; color: #8b7355;">✨ Нет записей, ожидающих подтверждения</div>';
+        } else {
+            pendingList.innerHTML = pendingBookings.map(booking => `
+                <div class="pending-item" data-date="${booking.date}" data-time="${booking.time}">
+                    <div class="date-badge">${new Date(booking.date).getDate()}.${new Date(booking.date).getMonth() + 1}</div>
+                    <div class="time-badge">${booking.time}</div>
+                    <div class="booking-details">
+                        <strong>${booking.name}</strong>
+                        <small>${booking.phone}</small>
+                        <div>${booking.service}</div>
+                    </div>
+                    <div class="pending-actions">
+                        <button class="confirm-pending" title="Подтвердить">✅</button>
+                        <button class="reject-pending" title="Отклонить">❌</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Добавляем обработчики для кнопок подтверждения/отклонения
+        document.querySelectorAll('.confirm-pending').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const item = btn.closest('.pending-item');
+                const date = item.dataset.date;
+                const time = item.dataset.time;
+                
+                if (confirm(`Подтвердить запись на ${date} в ${time}?`)) {
+                    try {
+                        await bookingAPI.confirmBooking(date, time, user.phone);
+                        showMessage('✅ Запись подтверждена', '#10b981');
+                        // Обновляем данные
+                        bookings = await bookingAPI.getAllBookings();
+                        loadAdminData();
+                        renderWeek();
+                        if (selectedDate) renderTimeSlots();
+                    } catch (error) {
+                        alert('Ошибка: ' + error.message);
+                    }
+                }
+            });
+        });
+        
+        document.querySelectorAll('.reject-pending').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const item = btn.closest('.pending-item');
+                const date = item.dataset.date;
+                const time = item.dataset.time;
+                
+                if (confirm(`Отклонить запись на ${date} в ${time}?`)) {
+                    try {
+                        await bookingAPI.deleteBooking(date, time, user.phone);
+                        showMessage('❌ Запись отклонена', '#ef4444');
+                        // Обновляем данные
+                        bookings = await bookingAPI.getAllBookings();
+                        loadAdminData();
+                        renderWeek();
+                        if (selectedDate) renderTimeSlots();
+                    } catch (error) {
+                        alert('Ошибка: ' + error.message);
+                    }
+                }
+            });
+        });
+    }
+    
+    // Все записи (отсортированные по дате и времени)
+    const allBookings = [...bookingsArray]
+        .sort((a, b) => {
+            const dateCompare = new Date(a.date) - new Date(b.date);
+            if (dateCompare !== 0) return dateCompare;
+            return a.time.localeCompare(b.time);
+        });
     
     const allList = document.getElementById('all-bookings-list');
-    allList.innerHTML = allBookings.map(booking => `
-        <div class="booking-item">
-            <div class="booking-date">
-                <div class="booking-day">${new Date(booking.date).getDate()}</div>
-                <div class="booking-month">${getMonthName(new Date(booking.date))}</div>
-            </div>
-            <div class="booking-info">
-                <div class="booking-time">${booking.time}</div>
-                <div class="booking-client">
-                    <strong>${booking.name}</strong>
-                    <small>${booking.phone}</small>
+    if (allList) {
+        allList.innerHTML = allBookings.map(booking => `
+            <div class="booking-item ${booking.status === 'pending' ? 'pending-bg' : ''}">
+                <div class="booking-date">
+                    <div class="booking-day">${new Date(booking.date).getDate()}</div>
+                    <div class="booking-month">${getMonthName(new Date(booking.date))}</div>
                 </div>
-                <div class="booking-service">${booking.service}</div>
+                <div class="booking-info">
+                    <div class="booking-time">${booking.time}</div>
+                    <div class="booking-client">
+                        <strong>${booking.name}</strong>
+                        <small>${booking.phone}</small>
+                    </div>
+                    <div class="booking-service">${booking.service}</div>
+                    ${booking.status === 'pending' ? '<span class="status-badge pending">⏳ Ожидает</span>' : ''}
+                </div>
+                <div class="booking-actions">
+                    <button class="action-btn call" onclick="window.location.href='tel:${booking.phone}'">
+                        <i class="fas fa-phone"></i>
+                    </button>
+                    <button class="action-btn delete" onclick="deleteBooking('${booking.date}_${booking.time}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
             </div>
-            <div class="booking-actions">
-                <button class="action-btn call" onclick="window.location.href='tel:${booking.phone}'">
-                    <i class="fas fa-phone"></i>
-                </button>
-                <button class="action-btn delete" onclick="deleteBooking('${booking.date}_${booking.time}')">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </div>
-        </div>
-    `).join('');
+        `).join('');
+    }
     
     // Список клиентов
     const clients = {};
-    Object.values(bookings).forEach(booking => {
+    bookingsArray.forEach(booking => {
         if (!clients[booking.phone]) {
             clients[booking.phone] = {
                 name: booking.name,
@@ -1157,29 +1198,65 @@ function loadAdminData() {
     });
     
     const clientsList = document.getElementById('clients-list');
-    clientsList.innerHTML = Object.values(clients).map(client => `
-        <div class="client-item">
-            <div class="client-avatar">
-                ${client.name.charAt(0).toUpperCase()}
-            </div>
-            <div class="client-info">
-                <div class="client-name">${client.name}</div>
-                <div class="client-phone">${client.phone}</div>
-                <div class="client-stats">
-                    <span class="client-visits">${client.bookings} посещений</span>
-                    <span class="client-last">Последний: ${client.lastVisit}</span>
+    if (clientsList) {
+        clientsList.innerHTML = Object.values(clients).map(client => `
+            <div class="client-item">
+                <div class="client-avatar">
+                    ${client.name.charAt(0).toUpperCase()}
+                </div>
+                <div class="client-info">
+                    <div class="client-name">${client.name}</div>
+                    <div class="client-phone">${client.phone}</div>
+                    <div class="client-stats">
+                        <span class="client-visits">${client.bookings} посещений</span>
+                        <span class="client-last">Последний: ${client.lastVisit}</span>
+                    </div>
+                </div>
+                <div class="client-actions">
+                    <button class="action-btn call" onclick="window.location.href='tel:${client.phone}'">
+                        <i class="fas fa-phone"></i>
+                    </button>
                 </div>
             </div>
-            <div class="client-actions">
-                <button class="action-btn call" onclick="window.location.href='tel:${client.phone}'">
-                    <i class="fas fa-phone"></i>
-                </button>
-                <button class="action-btn message" onclick="sendSMS('${client.phone}')">
-                    <i class="fas fa-sms"></i>
-                </button>
-            </div>
-        </div>
-    `).join('');
+        `).join('');
+    }
+}
+
+// Функция экспорта бэкапа
+function exportBackup() {
+    const dataStr = JSON.stringify(bookings, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `massage_backup_${formatDate(new Date(), 'input')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showMessage('✅ Бэкап сохранен', '#10b981');
+}
+
+// Функция импорта бэкапа
+async function importBackup(file) {
+    try {
+        const text = await file.text();
+        const imported = JSON.parse(text);
+        
+        if (confirm(`Импортировать ${Object.keys(imported).length} записей? Текущие данные будут заменены.`)) {
+            // Сохраняем импортированные данные через API
+            for (const [key, booking] of Object.entries(imported)) {
+                const [date, time] = key.split('_');
+                try {
+                    await bookingAPI.createBooking(booking);
+                } catch (e) {
+                    console.log('Ошибка импорта записи:', key);
+                }
+            }
+            showMessage('✅ Бэкап восстановлен! Обновите страницу.', '#10b981');
+            setTimeout(() => location.reload(), 1500);
+        }
+    } catch (error) {
+        alert('Ошибка импорта: ' + error.message);
+    }
 }
 
 function exportToExcel() {
