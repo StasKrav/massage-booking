@@ -5,8 +5,8 @@
     "name": "Артём",
     "phone": "+79048432127",
     "service": "Общий массаж",
-    "status": "pending",
+    "status": "confirmed",
     "createdAt": "2026-04-22T04:25:49.595Z",
-    "confirmedAt": null
+    "confirmedAt": "2026-04-22T04:26:05.701Z"
   }
 }
