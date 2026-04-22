@@ -428,6 +428,19 @@ function stopAdminPolling() {
     }
 }
 
+// Функция обновления счётчика pending и вызова уведомлений
+function refreshPendingCount() {
+    if (!user || !ADMIN_PHONES.includes(user.phone)) return;
+    const pending = Object.values(bookings).filter(b => b.status === 'pending').length;
+    adminNotifications.updatePending(pending);
+}
+
+// Делаем функции доступными глобально
+window.refreshPendingCount = refreshPendingCount;
+window.startAdminPolling = startAdminPolling;
+window.stopAdminPolling = stopAdminPolling;
+
+
 
 
 
@@ -1823,11 +1836,3 @@ function showNewBookingNotification(bookingData) {
   }
 }
 
-// Делаем функцию доступной глобально для вызова из storage.js
-window.refreshPendingCount = refreshPendingCount;
-window.refreshPendingCount = function() {
-    const pending = Object.values(bookings).filter(b => b.status === 'pending').length;
-    adminNotifications.updatePending(pending);
-};
-window.startAdminPolling = startAdminPolling;
-window.stopAdminPolling = stopAdminPolling;
