@@ -34,6 +34,11 @@ const bookingAPI = {
             
             this.notifyNewBooking(bookingData);
             
+            // Обновляем счётчик pending, если определена функция
+            if (typeof window.refreshPendingCount === 'function') {
+                window.refreshPendingCount();
+            }
+            
             return result.booking || bookingData;
         } catch (error) {
             console.error('❌ Ошибка:', error);

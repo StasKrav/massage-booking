@@ -1208,3 +1208,59 @@ input:focus, select:focus {
     color: #ffffff !important;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
+
+/* Анимация для кнопки админа при ожидающих заявках */
+@keyframes adminPulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(212, 165, 116, 0.7);
+        transform: scale(1);
+    }
+    50% {
+        box-shadow: 0 0 0 15px rgba(212, 165, 116, 0);
+        transform: scale(1.05);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(212, 165, 116, 0);
+        transform: scale(1);
+    }
+}
+
+#admin-btn.pulse {
+    animation: adminPulse 1.5s infinite;
+}
+
+/* Фон страницы при наличии pending заявок (лёгкий красноватый оттенок) */
+body.admin-urgent {
+    background: linear-gradient(135deg, #fdf6e3 0%, #fce4e4 100%) !important;
+}
+
+/* Бейдж на кнопке админа */
+#admin-pending-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: #ef4444;
+    color: white;
+    border-radius: 50%;
+    min-width: 20px;
+    height: 20px;
+    font-size: 12px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    border: 2px solid white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    transition: all 0.3s ease;
+}
+
+/* Для тёмной темы корректировка */
+@media (prefers-color-scheme: dark) {
+    body.admin-urgent {
+        background: linear-gradient(135deg, #2c2416 0%, #4a2a2a 100%) !important;
+    }
+    #admin-pending-badge {
+        border-color: #3a2e1e;
+    }
+}

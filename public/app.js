@@ -16,6 +16,165 @@ let isAdminMode = false;
 let adminLoginAttempts = 0;;
 
 
+
+
+// ========== СИСТЕМА УВЕДОМЛЕНИЙ АДМИНА ==========
+const adminNotifications = {
+    originalTitle: document.title,
+    originalFavicon: null,
+    flashInterval: null,
+    isFlashing: false,
+    pendingCount: 0,
+
+    init() {
+        const favicon = document.querySelector('link[rel="icon"]');
+        this.originalFavicon = favicon ? favicon.href : '/favicon.ico';
+        // Создаём бейдж на кнопке админа
+        this.createPendingBadge();
+    },
+
+    createPendingBadge() {
+        const adminBtn = document.getElementById('admin-btn');
+        if (!adminBtn) return;
+        // Проверяем, нет ли уже бейджа
+        let badge = document.getElementById('admin-pending-badge');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.id = 'admin-pending-badge';
+            badge.style.cssText = `
+                position: absolute;
+                top: -5px;
+                right: -5px;
+                background: #ef4444;
+                color: white;
+                border-radius: 50%;
+                min-width: 20px;
+                height: 20px;
+                font-size: 12px;
+                font-weight: bold;
+                display: none;
+                align-items: center;
+                justify-content: center;
+                padding: 0 4px;
+                border: 2px solid white;
+            `;
+            adminBtn.style.position = 'relative';
+            adminBtn.appendChild(badge);
+        }
+    },
+
+    startFlashing(count) {
+        this.pendingCount = count;
+        if (this.isFlashing) return;
+
+        this.isFlashing = true;
+        let state = true;
+        this.flashInterval = setInterval(async () => {
+            if (state) {
+                document.title = `🔔 Новая заявка! (${count})`;
+                const badgedFavicon = await this.createBadgedFavicon(count);
+                this.setFavicon(badgedFavicon);
+            } else {
+                document.title = this.originalTitle;
+                this.setFavicon(this.originalFavicon);
+            }
+            state = !state;
+        }, 1000);
+
+        document.getElementById('admin-btn')?.classList.add('pulse');
+        document.body.classList.add('admin-urgent');
+    },
+
+    stopFlashing() {
+        if (this.flashInterval) {
+            clearInterval(this.flashInterval);
+            this.flashInterval = null;
+        }
+        this.isFlashing = false;
+        document.title = this.originalTitle;
+        this.setFavicon(this.originalFavicon);
+        document.getElementById('admin-btn')?.classList.remove('pulse');
+        document.body.classList.remove('admin-urgent');
+    },
+
+    async updatePending(count) {
+        this.pendingCount = count;
+        const badge = document.getElementById('admin-pending-badge');
+        if (badge) {
+            badge.textContent = count > 99 ? '99+' : count;
+            badge.style.display = count > 0 ? 'flex' : 'none';
+        }
+
+        if (count > 0) {
+            // Если вкладка не активна или нет фокуса - мигаем
+            if (!document.hasFocus() && !this.isFlashing) {
+                this.startFlashing(count);
+            } else {
+                // Иначе статичный индикатор
+                document.title = `(${count}) ${this.originalTitle}`;
+                this.setFavicon(await this.createBadgedFavicon(count));
+            }
+        } else {
+            this.stopFlashing();
+        }
+    },
+
+    setFavicon(url) {
+        let link = document.querySelector('link[rel="icon"]');
+        if (!link) {
+            link = document.createElement('link');
+            link.rel = 'icon';
+            document.head.appendChild(link);
+        }
+        link.href = url;
+    },
+
+    createBadgedFavicon(count) {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = 'Anonymous';
+            img.src = this.originalFavicon;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                // Красный кружок в правом верхнем углу
+                ctx.beginPath();
+                ctx.arc(canvas.width - 8, 8, 8, 0, 2 * Math.PI);
+                ctx.fillStyle = '#ef4444';
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                // Число
+                ctx.font = 'bold 11px Arial';
+                ctx.fillStyle = '#fff';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const displayCount = count > 99 ? '99+' : count.toString();
+                ctx.fillText(displayCount, canvas.width - 8, 8);
+                resolve(canvas.toDataURL());
+            };
+            img.onerror = () => resolve(this.originalFavicon);
+        });
+    }
+};
+
+// Функция обновления счётчика pending и вызова уведомлений
+function refreshPendingCount() {
+    if (!user || !ADMIN_PHONES.includes(user.phone)) return;
+    const pending = Object.values(bookings).filter(b => b.status === 'pending').length;
+    adminNotifications.updatePending(pending);
+}
+
+
+
+
+
+
+
 // Функция проверки пароля
 async function verifyAdminPassword(password) {
     const encoder = new TextEncoder();
@@ -505,7 +664,7 @@ async function cancelMyBooking(key, phone) {
         
         // Обновляем локальные данные
         delete bookings[key];
-        
+        refreshPendingCount();
         // Обновляем интерфейс
         renderTimeSlots();
         renderWeek();
@@ -622,6 +781,7 @@ async function saveQuickBooking() {
         // Обновляем локальную копию
         const key = `${selectedDate}_${bookingTime}`;
         bookings[key] = newBooking;
+        refreshPendingCount();
         
         // Обновляем интерфейс
         renderTimeSlots();
@@ -650,6 +810,8 @@ async function initApp() {
     try {
         // Загружаем данные из API
         bookings = await bookingAPI.getAllBookings();
+        adminNotifications.init();
+        refreshPendingCount();
         console.log('Загружено записей:', Object.keys(bookings).length);
         
         renderWeek();
@@ -813,6 +975,15 @@ function setupEventListeners() {
             closeModal();
         }
     });
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            adminNotifications.stopFlashing();
+            if (adminNotifications.pendingCount > 0) {
+                adminNotifications.updatePending(adminNotifications.pendingCount);
+            }
+        }
+    });
 }
 
 // Закрытие модального окна
@@ -860,6 +1031,7 @@ function isSameDay(date1, date2) {
 
 
 function showAdminPanel() {
+	adminNotifications.stopFlashing(); // прекращаем мигание при открытии панели
     const panel = document.createElement('div');
     panel.id = 'admin-panel';
     panel.innerHTML = `
@@ -1377,3 +1549,6 @@ function showNewBookingNotification(bookingData) {
     });
   }
 }
+
+// Делаем функцию доступной глобально для вызова из storage.js
+window.refreshPendingCount = refreshPendingCount;
