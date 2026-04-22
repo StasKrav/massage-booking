@@ -380,7 +380,7 @@ function startAdminPolling() {
         clearInterval(adminPollingInterval);
     }
     
-    // Запускаем проверку каждые 5 секунд
+    // Запускаем проверку каждые 5 секунд ДЛЯ УВЕДОМЛЕНИЙ
     adminPollingInterval = setInterval(async () => {
         try {
             const freshBookings = await bookingAPI.getAllBookings();
@@ -388,9 +388,9 @@ function startAdminPolling() {
             const newCount = newPending.length;
             
             if (newCount !== lastPendingCount) {
-                console.log(`📊 Обновление: было ${lastPendingCount} заявок, стало ${newCount}`);
+                console.log(`📊 Обновление pending: было ${lastPendingCount}, стало ${newCount}`);
                 
-                // Находим новые заявки
+                // Находим новые заявки для уведомлений
                 const newBookings = newPending.filter(b => {
                     const key = `${b.date}_${b.time}`;
                     return !bookings[key] || bookings[key].status !== 'pending';
@@ -400,24 +400,17 @@ function startAdminPolling() {
                 bookings = freshBookings;
                 lastPendingCount = newCount;
                 
-                // Обновляем уведомления
-                adminNotifications.updatePending(newCount, newBookings);
-                
-                // Обновляем интерфейс если нужно
-                if (selectedDate) renderTimeSlots();
-                renderWeek();
-                
-                // Если открыта админ-панель, обновляем её
-                if (document.getElementById('admin-panel')) {
-                    loadAdminData();
+                // Обновляем уведомления (только для админа)
+                if (ADMIN_PHONES.includes(user.phone)) {
+                    adminNotifications.updatePending(newCount, newBookings);
                 }
             }
         } catch (error) {
             console.error('Ошибка polling:', error);
         }
-    }, 5000); // Проверка каждые 5 секунд
+    }, 5000);
     
-    console.log('🔍 Активный мониторинг запущен для админа');
+    console.log('🔍 Дополнительный мониторинг уведомлений запущен');
 }
 
 function stopAdminPolling() {
@@ -435,10 +428,6 @@ function refreshPendingCount() {
     adminNotifications.updatePending(pending);
 }
 
-// Делаем функции доступными глобально
-window.refreshPendingCount = refreshPendingCount;
-window.startAdminPolling = startAdminPolling;
-window.stopAdminPolling = stopAdminPolling;
 
 
 
@@ -1087,9 +1076,31 @@ async function initApp() {
         
         renderWeek();
         
-        // Запускаем мониторинг для админа
-        startAdminPolling();
+        // Подписываемся на изменения (старый механизм)
+        if (bookingAPI.subscribeToChanges) {
+            subscription = bookingAPI.subscribeToChanges(async () => {
+                console.log('🔄 Обновляем данные...');
+                const oldPending = Object.values(bookings).filter(b => b.status === 'pending').length;
+                bookings = await bookingAPI.getAllBookings();
+                const newPending = Object.values(bookings).filter(b => b.status === 'pending').length;
+                
+                // Если количество pending изменилось - обновляем уведомления
+                if (newPending !== oldPending) {
+                    refreshPendingCount();
+                }
+                
+                renderWeek();
+                if (selectedDate) renderTimeSlots();
+                
+                // Если открыта админ-панель, обновляем её
+                if (document.getElementById('admin-panel')) {
+                    loadAdminData();
+                }
+            });
+        }
         
+        // Дополнительный мониторинг для админа (более частый)
+        startAdminPolling();
         checkSavedAdminAuth();
         checkAdminAccess();
         setupEventListeners();
@@ -1567,6 +1578,7 @@ function loadAdminData() {
                         showMessage('✅ Запись подтверждена', '#10b981');
                         // Обновляем данные
                         bookings = await bookingAPI.getAllBookings();
+                        refreshPendingCount();
                         loadAdminData();
                         renderWeek();
                         if (selectedDate) renderTimeSlots();
@@ -1590,6 +1602,7 @@ function loadAdminData() {
                         showMessage('❌ Запись отклонена', '#ef4444');
                         // Обновляем данные
                         bookings = await bookingAPI.getAllBookings();
+                        refreshPendingCount();
                         loadAdminData();
                         renderWeek();
                         if (selectedDate) renderTimeSlots();
@@ -1836,3 +1849,6 @@ function showNewBookingNotification(bookingData) {
   }
 }
 
+window.refreshPendingCount = refreshPendingCount;
+window.startAdminPolling = startAdminPolling;
+window.stopAdminPolling = stopAdminPolling;
