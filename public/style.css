@@ -1264,3 +1264,47 @@ body.admin-urgent {
         border-color: #3a2e1e;
     }
 }
+
+/* Анимации для уведомлений */
+@keyframes badgePulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.2); box-shadow: 0 0 20px #ff0000; }
+    100% { transform: scale(1); }
+}
+
+@keyframes pulse-urgent {
+    0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7); transform: scale(1); }
+    50% { box-shadow: 0 0 0 20px rgba(255, 0, 0, 0); transform: scale(1.1); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); transform: scale(1); }
+}
+
+#admin-btn.pulse-urgent {
+    animation: pulse-urgent 1s infinite;
+}
+
+@keyframes slideInRight {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slideOutRight {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(100%); opacity: 0; }
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+body.admin-urgent {
+    background: linear-gradient(135deg, #fff0f0 0%, #ffe0e0 100%) !important;
+    animation: urgentBackground 2s infinite;
+}
+
+@keyframes urgentBackground {
+    0% { background: linear-gradient(135deg, #fff0f0 0%, #ffe0e0 100%); }
+    50% { background: linear-gradient(135deg, #ffe0e0 0%, #ffc0c0 100%); }
+    100% { background: linear-gradient(135deg, #fff0f0 0%, #ffe0e0 100%); }
+}
